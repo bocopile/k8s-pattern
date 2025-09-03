@@ -4,6 +4,9 @@ kind: Job
 metadata:
   name: indexed-backoff-per-index
   namespace: job-lab
+  annotations:
+    owner: "신복호"
+    email: "owner@example.com"         # <-- 요구된 이메일 어노테이션
 spec:
   completions: 8
   parallelism: 4
@@ -13,26 +16,55 @@ spec:
   activeDeadlineSeconds: 1800
   ttlSecondsAfterFinished: 300
   template:
+    metadata:
+      labels:
+        app: indexed-backoff-per-index
     spec:
       restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
       containers:
-      - name: worker
-        image: alpine:3.20
-        command: ["/scripts/worker.sh"]
-        env:
-        - name: MODE
-          value: "always_fail"
-        - name: FAIL_INDEX
-          value: "5"   # 5번 인덱스는 늘 실패(3회 재시도 후 실패 인덱스로 집계)
-        - name: JOB_COMPLETION_INDEX
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
-        volumeMounts:
-        - name: scripts
-          mountPath: /scripts
+        - name: worker
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["/scripts/worker.sh"]
+          env:
+            - name: MODE
+              value: "always_fail"
+            - name: FAIL_INDEX
+              value: "5"   # 5번 인덱스는 늘 실패(3회 재시도 후 실패 인덱스로 집계)
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts           # 실행 스크립트 (ConfigMap, read-only)
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp               # read-only rootfs 대비 쓰기 가능 tmp
       volumes:
-      - name: scripts
-        configMap:
-          name: job-worker-scripts
-          defaultMode: 0755
+        - name: scripts
+          configMap:
+            name: job-worker-scripts
+            defaultMode: 0755
+        - name: tmp
+          emptyDir: {}                    # /tmp 쓰기 가능 볼륨

@@ -1,0 +1,9 @@
+checks:
+  include:
+    - "unset-cpu-requirements"
+    - "unset-memory-requirements"
+    - "no-anti-affinity"
+    - "minimum-three-replicas"
+    - "mismatching-selector"
+    - "required-annotation-email"
+    - "no-read-only-root-fs"

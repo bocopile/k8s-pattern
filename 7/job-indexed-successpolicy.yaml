@@ -4,13 +4,16 @@ kind: Job
 metadata:
   name: indexed-successpolicy
   namespace: job-lab
+  annotations:
+    owner: "신복호"
+    email: "gjrjr4545@gmail.com"     # 요구되는 이메일 어노테이션
 spec:
   completions: 8
   parallelism: 4
   completionMode: Indexed
   successPolicy:
     rules:
-    - succeededCount: 6
+      - succeededCount: 6
   backoffLimit: 2
   activeDeadlineSeconds: 1800
   ttlSecondsAfterFinished: 300
@@ -20,23 +23,48 @@ spec:
         app: sp-demo
     spec:
       restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
       containers:
-      - name: worker
-        image: alpine:3.20
-        command: ["/scripts/worker.sh"]
-        env:
-        - name: MODE
-          value: "ok"
-        - name: JOB_COMPLETION_INDEX
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
-        volumeMounts:
-        - name: scripts
-          mountPath: /scripts
+        - name: worker
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["/scripts/worker.sh"]
+          env:
+            - name: MODE
+              value: "ok"
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp           # RO 루트FS 대비 쓰기 가능한 tmp
       volumes:
-      - name: scripts
-        configMap:
-          name: job-worker-scripts
-          defaultMode: 0755
-
+        - name: scripts
+          configMap:
+            name: job-worker-scripts
+            defaultMode: 0755
+        - name: tmp
+          emptyDir: {}

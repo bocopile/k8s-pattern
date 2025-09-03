@@ -1,8 +1,12 @@
+# filename: job-pfp-failjob-exit42.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: pfp-failjob-exit42
   namespace: job-lab
+  annotations:
+    owner: "신복호"
+    email: "owner@example.com"           # ← 실제 이메일로 교체
 spec:
   completions: 8
   parallelism: 3
@@ -13,32 +17,61 @@ spec:
   # 특정 종료코드(42) → 즉시 Job 실패
   podFailurePolicy:
     rules:
-    - action: FailJob
-      onExitCodes:
-        containerName: worker
-        operator: In
-        values: [42]
+      - action: FailJob
+        onExitCodes:
+          containerName: worker
+          operator: In
+          values: [42]
   template:
+    metadata:
+      labels:
+        app: pfp-failjob-exit42
     spec:
       restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
       containers:
-      - name: worker
-        image: alpine:3.20
-        command: ["/scripts/worker.sh"]
-        env:
-        - name: MODE
-          value: "exit42"
-        - name: FAIL_INDEX
-          value: "3"   # 3번 인덱스에서 exit 42 발생
-        - name: JOB_COMPLETION_INDEX
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
-        volumeMounts:
-        - name: scripts
-          mountPath: /scripts
+        - name: worker
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["/scripts/worker.sh"]
+          env:
+            - name: MODE
+              value: "exit42"
+            - name: FAIL_INDEX
+              value: "3"   # 3번 인덱스에서 exit 42 발생
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"                 # ← CPU 요청 추가(린트 요구)
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp               # RO 루트FS 대비 쓰기 가능한 tmp
       volumes:
-      - name: scripts
-        configMap:
-          name: job-worker-scripts
-          defaultMode: 0755
+        - name: scripts
+          configMap:
+            name: job-worker-scripts
+            defaultMode: 0755
+        - name: tmp
+          emptyDir: {}

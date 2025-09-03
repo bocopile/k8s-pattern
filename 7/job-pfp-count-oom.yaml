@@ -1,9 +1,12 @@
-# filename: 40-job-pfp-count-oom.yaml
+# filename: job-pfp-count-oom.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: pfp-count-oom
   namespace: job-lab
+  annotations:
+    owner: "신복호"
+    email: "gjrjr4545@gmail.com"        # ← 실제 이메일로 교체
 spec:
   completions: 4
   parallelism: 2
@@ -14,31 +17,56 @@ spec:
   # OOMKilled(137) → 실패 카운트 증가(Count) 후 backoff 전략 적용
   podFailurePolicy:
     rules:
-    - action: Count
-      onExitCodes:
-        containerName: py
-        operator: In
-        values: [137]
+      - action: Count
+        onExitCodes:
+          containerName: py
+          operator: In
+          values: [137]
   template:
+    metadata:
+      labels:
+        app: pfp-count-oom
     spec:
       restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
       containers:
-      - name: py
-        image: python:3.12-alpine
-        command: ["python","-c"]
-        args:
-          - |
-            a=[]
-            # 일부러 메모리 사용을 늘려 OOMKilled 유도
-            while True:
-              a.append(bytearray(64*1024*1024))
-        resources:
-          limits:
-            memory: "128Mi"
-          requests:
-            memory: "64Mi"
-        env:
-        - name: JOB_COMPLETION_INDEX
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+        - name: py
+          image: python:3.12-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["python","-c"]
+          args:
+            - |
+              a=[]
+              # 일부러 메모리 사용을 늘려 OOMKilled 유도
+              while True:
+                a.append(bytearray(64*1024*1024))
+          env:
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"                # ← CPU 요청 추가(린트 요구)
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp              # RO 루트FS 대비 쓰기 가능한 tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
