@@ -1,0 +1,44 @@
+# filename: 40-job-pfp-count-oom.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pfp-count-oom
+  namespace: job-lab
+spec:
+  completions: 4
+  parallelism: 2
+  completionMode: Indexed
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 300
+  # OOMKilled(137) → 실패 카운트 증가(Count) 후 backoff 전략 적용
+  podFailurePolicy:
+    rules:
+    - action: Count
+      onExitCodes:
+        containerName: py
+        operator: In
+        values: [137]
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: py
+        image: python:3.12-alpine
+        command: ["python","-c"]
+        args:
+          - |
+            a=[]
+            # 일부러 메모리 사용을 늘려 OOMKilled 유도
+            while True:
+              a.append(bytearray(64*1024*1024))
+        resources:
+          limits:
+            memory: "128Mi"
+          requests:
+            memory: "64Mi"
+        env:
+        - name: JOB_COMPLETION_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']

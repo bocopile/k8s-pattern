@@ -1,0 +1,19 @@
+# tps-deploy.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: tps-demo
+spec:
+  replicas: 30
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      # 의도적으로 topologySpreadConstraints 미설정 (기본 분산이 적용되어야 함)
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: team-a
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: web
+        version: v2
+    spec:
+      containers:
+        - name: app
+          image: nginx
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: topology.kubernetes.io/zone
+                matchLabelKeys:
+                  - "version"
+                namespaceSelector:
+                  matchLabels:
+                    group: web-tenants
+                labelSelector:
+                  matchLabels:
+                    app: web

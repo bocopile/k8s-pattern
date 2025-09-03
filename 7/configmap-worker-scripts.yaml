@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-worker-scripts
+  namespace: job-lab
+data:
+  worker.sh: |
+    #!/bin/sh
+    set -eu
+    idx="${JOB_COMPLETION_INDEX:-0}"
+    mode="${MODE:-ok}"
+
+    echo "[worker] mode=$mode index=$idx"
+
+    case "$mode" in
+      ok)
+        echo "OK shard $idx"
+        exit 0
+        ;;
+      exit42)
+        # FAIL_INDEX와 인덱스가 같으면 42로 즉시 종료(비복구성 에러 시뮬)
+        if [ "${FAIL_INDEX:-3}" = "$idx" ]; then
+          echo "Failing index $idx with exit 42"
+          exit 42
+        fi
+        echo "OK shard $idx"
+        exit 0
+        ;;
+      always_fail)
+        # 특정 인덱스는 항상 실패(재시도/백오프/FailIndex 실험용)
+        if [ "${FAIL_INDEX:-5}" = "$idx" ]; then
+          echo "Always failing index $idx"
+          exit 1
+        fi
+        echo "OK shard $idx"
+        exit 0
+        ;;
+      *)
+        echo "unknown MODE=$mode"
+        exit 2
+        ;;
+    esac
+

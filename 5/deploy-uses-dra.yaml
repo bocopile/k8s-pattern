@@ -1,0 +1,29 @@
+# deploy-uses-dra.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-app
+  namespace: team-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: gpu-app }
+  template:
+    metadata:
+      labels: { app: gpu-app }
+    spec:
+      resourceClaims:
+        - name: gpu
+          source:
+            resourceClaimTemplateName: gpu-claim-tpl
+      containers:
+        - name: app
+          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          command: ["bash","-lc"]
+          args: ["nvidia-smi || (echo 'no driver'; sleep 3600)"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: "1Gi"
+            # v1alpha2에선 컨테이너에 claims 참조를 적지 않아도 됩니다(위 pod.spec.resourceClaims로 바인딩)
+

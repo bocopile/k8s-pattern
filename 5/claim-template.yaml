@@ -1,0 +1,15 @@
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-claim-tpl
+  namespace: team-a
+spec:
+  spec:
+    resourceClassName: nvidia-gpu
+    allocationMode: WaitForFirstConsumer
+    # (선택) 클레임 수준 파라미터를 쓰고 싶을 때만 켜세요
+    # parametersRef:
+    #   apiGroup: resource.k8s.io
+    #   kind: ResourceClaimParameters
+    #   name: gpu-claim-params   # team-a 네임스페이스에 있어야 함
+

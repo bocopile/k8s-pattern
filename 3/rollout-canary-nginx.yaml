@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: nginx
+  namespace: rollouts-canary-demo
+  labels:
+    app: nginx
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: nginx
+  strategy:
+    canary:
+      steps:
+      - setWeight: 10
+      - pause: {}     # ★ 승인 대기 (수동 프로모트)
+      - setWeight: 30
+      - pause: {}     # ★ 승인 대기
+      - setWeight: 50
+      - pause: {}     # ★ 승인 대기 → 이후 프로모트 시 100% 전환 완료
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25.0
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+

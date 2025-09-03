@@ -1,0 +1,8 @@
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClassParameters
+metadata:
+  name: nvidia-gpu-params
+filters:
+  - driverName: dra.bocopile.io
+    namedResources:
+      selector: 'device.attributes["vendor"] == "nvidia"'

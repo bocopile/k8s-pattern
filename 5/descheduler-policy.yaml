@@ -1,0 +1,30 @@
+# descheduler-policy.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: descheduler
+  namespace: kube-system
+data:
+  policy.yaml: |
+    apiVersion: descheduler/v1alpha2
+    kind: DeschedulerPolicy
+    profiles:
+    - name: default
+      pluginConfig:
+      - name: DefaultEvictor
+        args:
+          nodeFit: true
+      - name: LowNodeUtilization
+        args:
+          thresholds:       { pods: 16 }  # <16% = 저활용 (13~15%도 잡힘)
+          targetThresholds: { pods: 19 }  # >19% = 과밀 (20% 바로 해당)
+      - name: RemovePodsViolatingNodeAffinity
+        args:
+          nodeAffinityType:
+            - requiredDuringSchedulingIgnoredDuringExecution
+      plugins:
+        balance:
+          enabled: ["LowNodeUtilization"]
+        deschedule:
+          enabled: ["RemovePodsViolatingNodeAffinity"]
+

@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pfp-failjob-exit42
+  namespace: job-lab
+spec:
+  completions: 8
+  parallelism: 3
+  completionMode: Indexed
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 300
+  # 특정 종료코드(42) → 즉시 Job 실패
+  podFailurePolicy:
+    rules:
+    - action: FailJob
+      onExitCodes:
+        containerName: worker
+        operator: In
+        values: [42]
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: worker
+        image: alpine:3.20
+        command: ["/scripts/worker.sh"]
+        env:
+        - name: MODE
+          value: "exit42"
+        - name: FAIL_INDEX
+          value: "3"   # 3번 인덱스에서 exit 42 발생
+        - name: JOB_COMPLETION_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: job-worker-scripts
+          defaultMode: 0755

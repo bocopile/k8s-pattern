@@ -1,0 +1,42 @@
+# filename: 10-job-indexed-successpolicy.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: indexed-successpolicy
+  namespace: job-lab
+spec:
+  completions: 8
+  parallelism: 4
+  completionMode: Indexed
+  successPolicy:
+    rules:
+    - succeededCount: 6
+  backoffLimit: 2
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: sp-demo
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: worker
+        image: alpine:3.20
+        command: ["/scripts/worker.sh"]
+        env:
+        - name: MODE
+          value: "ok"
+        - name: JOB_COMPLETION_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: job-worker-scripts
+          defaultMode: 0755
+

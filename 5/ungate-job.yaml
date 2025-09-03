@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ungate
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: ungate
+          image: bitnami/kubectl:latest
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              kubectl patch pod gated-pod --type=json \
+                -p='[{"op":"remove","path":"/spec/schedulingGates"}]'
