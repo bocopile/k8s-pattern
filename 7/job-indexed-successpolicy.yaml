@@ -1,4 +1,4 @@
-# filename: 10-job-indexed-successpolicy.yaml
+# filename: 1job-indexed-successpolicy.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
