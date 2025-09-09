@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: success-cronjob
+  annotations:
+    email: "gjrjr4545@gmail.com"
+spec:
+  schedule: "*/2 * * * *"       # 2분마다 실행
+  concurrencyPolicy: Forbid     # 중복 실행 방지
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: success
+              image: busybox:1.36.1
+              args:
+                - /bin/sh
+                - -c
+                - "date; echo 'Success CronJob executed successfully'"
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                readOnlyRootFilesystem: true
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "64Mi"

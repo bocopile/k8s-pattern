@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: replacement-cronjob
+  annotations:
+    email: "gjrjr4545@gmail.com"
+spec:
+  schedule: "*/3 * * * *"   # 3분마다 실행
+  jobTemplate:
+    spec:
+      podReplacementPolicy: Failed   # v1.34 GA 기능
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: fail-test
+              image: busybox:1.36.1
+              args:
+                - /bin/sh
+                - -c
+                - "echo '🔄 Test Replacement Policy'; exit 1"
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                readOnlyRootFilesystem: true
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "64Mi"
