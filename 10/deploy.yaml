@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: singleton-app
+spec:
+  replicas: 2               # 2개 이상 띄워도 리더는 1개만!
+  selector:
+    matchLabels:
+      app: singleton
+  template:
+    metadata:
+      labels:
+        app: singleton
+    spec:
+      serviceAccountName: singleton-sa
+      containers:
+      - name: singleton
+        image: gjrjr4545/singleton:latest
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: singleton-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: singleto
