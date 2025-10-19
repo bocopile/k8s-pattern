@@ -1,0 +1,19 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: stateless-echo
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/target: "50"
+        autoscaling.knative.dev/scale-to-zero-grace-period: "30s"
+    spec:
+      containers:
+        - image: hashicorp/http-echo:1.0.0
+          args:
+            - "-listen=:8080"
+            - "-text=hello from knative!"
+          ports:
+            - containerPort: 8080
