@@ -1,0 +1,36 @@
+# 03-headless-stateful.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-hl
+  namespace: sd-lab
+spec:
+  clusterIP: None
+  selector:
+    app: demo-hl
+  ports:
+    - port: 8080
+      name: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: demo
+  namespace: sd-lab
+spec:
+  serviceName: demo-hl
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-hl
+  template:
+    metadata:
+      labels:
+        app: demo-hl
+    spec:
+      containers:
+        - name: web
+          image: hashicorp/http-echo:1.0
+          args: ["-text=stateful"]
+          ports:
+            - containerPort: 8080

@@ -1,0 +1,44 @@
+# -------------------------------
+# 1. Knative ↔ Istio Gateway 매핑 설정
+# -------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-istio
+  namespace: knative-serving
+  labels:
+    serving.knative.dev/release: "v1.11.2"
+data:
+  gateway.knative-serving.knative-ingress-gateway: "istio-ingressgateway.istio-system.svc.cluster.local"
+
+---
+# -------------------------------
+# 2. Knative Service (echo-kn)
+# -------------------------------
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: echo-kn
+  namespace: sd-lab
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "5"
+        networking.knative.dev/ingress-class: "istio.ingress.networking.knative.dev"
+        serving.knative.dev/rollout-duration: "10s"
+    spec:
+      containers:
+        - image: hashicorp/http-echo:1.0
+          args: ["-text=hello-knative"]
+          ports:
+            - name: http1
+              containerPort: 5678
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]

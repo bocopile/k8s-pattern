@@ -1,0 +1,23 @@
+# 09-knative-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: istio-reader
+rules:
+  - apiGroups: [""]
+    resources: ["services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: knative-serving-istio-access
+  namespace: istio-system
+subjects:
+  - kind: ServiceAccount
+    name: controller
+    namespace: knative-serving
+roleRef:
+  kind: ClusterRole
+  name: istio-reader
+  apiGroup: rbac.authorization.k8s.io
