@@ -1,5 +1,5 @@
 # -------------------------------
-# 1. Knative ↔ Istio Gateway 매핑 설정
+# 1. Knative ↔ Istio Gateway 매핑 설정 (수정 완료)
 # -------------------------------
 apiVersion: v1
 kind: ConfigMap
@@ -9,7 +9,10 @@ metadata:
   labels:
     serving.knative.dev/release: "v1.11.2"
 data:
-  gateway.knative-serving.knative-ingress-gateway: "istio-ingress.istio-ingress.svc.cluster.local"
+  # Istio Ingress Gateway 네임스페이스
+  gateway.knative-serving.knative-ingress-gateway: "istio-ingress/istio-ingressgateway"
+  #(내부 트래픽용)
+  local-gateway.knative-serving.knative-local-gateway: "istio-ingress/istio-ingressgateway"
 
 ---
 # -------------------------------
