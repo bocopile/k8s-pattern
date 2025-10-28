@@ -5,7 +5,8 @@ metadata:
   namespace: knative-serving
 spec:
   selector:
-    app: istio-ingressgateway
+    app: istio-ingress
+    istio: ingress
   servers:
     - port:
         number: 80
