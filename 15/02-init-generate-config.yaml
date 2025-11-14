@@ -1,0 +1,41 @@
+# 02-init-generate-config.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-init-generate-config
+spec:
+  restartPolicy: Never
+  volumes:
+    - name: config-volume
+      emptyDir: {}
+  initContainers:
+    - name: generate-config
+      image: busybox:1.36
+      volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      command:
+        - sh
+        - -c
+        - |
+          echo "[init] generating config..."
+          cat <<EOF > /config/app.conf
+          APP_NAME=demo-app
+          LOG_LEVEL=INFO
+          BACKEND_URL=http://backend.default.svc.cluster.local
+          EOF
+          echo "[init] done."
+  containers:
+    - name: app
+      image: busybox:1.36
+      volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      command:
+        - sh
+        - -c
+        - |
+          echo "[app] loaded config:"
+          cat /config/app.conf
+          echo "[app] sleeping..."
+          sleep 3600

@@ -1,0 +1,55 @@
+# 03-init-with-sidecar.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-init-with-sidecar
+spec:
+  restartPolicy: Always
+  volumes:
+    - name: shared-logs
+      emptyDir: {}
+  initContainers:
+    # 1) 한 번만 실행되는 전통 Init
+    - name: prepare-dir
+      image: busybox:1.36
+      volumeMounts:
+        - name: shared-logs
+          mountPath: /logs
+      command:
+        - sh
+        - -c
+        - |
+          echo "[init] preparing /logs dir..."
+          mkdir -p /logs
+          chmod 777 /logs
+    # 2) restartPolicy=Always 를 갖는 네이티브 사이드카
+    - name: log-shipper
+      image: busybox:1.36
+      restartPolicy: Always
+      volumeMounts:
+        - name: shared-logs
+          mountPath: /logs
+      command:
+        - sh
+        - -c
+        - |
+          echo "[sidecar] tail /logs/app.log"
+          touch /logs/app.log
+          tail -n+1 -F /logs/app.log
+  containers:
+    - name: app
+      image: busybox:1.36
+      volumeMounts:
+        - name: shared-logs
+          mountPath: /logs
+      command:
+        - sh
+        - -c
+        - |
+          i=0
+          while true; do
+            echo "[app] log line $i" | tee -a /logs/app.log
+            i=$((i+1))
+            sleep 5
+          done
+

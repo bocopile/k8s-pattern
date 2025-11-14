@@ -1,0 +1,33 @@
+# 01-init-wait-for-db.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-init-wait-db
+spec:
+  restartPolicy: Always
+  initContainers:
+    - name: wait-for-db
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          DB_HOST=${DB_HOST:-mysql}
+          DB_PORT=${DB_PORT:-3306}
+
+          echo "[init] waiting for DB at ${DB_HOST}:${DB_PORT}..."
+          until nc -z "${DB_HOST}" "${DB_PORT}"; do
+            echo "[init] DB not ready, sleep 5s"
+            sleep 5
+          done
+          echo "[init] DB is ready!"
+      env:
+        - name: DB_HOST
+          value: "mysql"   # 여기! Service 이름
+        - name: DB_PORT
+          value: "3306"
+  containers:
+    - name: app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
