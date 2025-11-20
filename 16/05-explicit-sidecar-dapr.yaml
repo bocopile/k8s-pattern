@@ -1,0 +1,243 @@
+# Explicit Sidecar 패턴: Dapr
+# 애플리케이션이 명시적으로 API를 통해 상호작용하는 사이드카
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dapr-config
+data:
+  config.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Configuration
+    metadata:
+      name: daprConfig
+    spec:
+      tracing:
+        samplingRate: "1"
+      metric:
+        enabled: true
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodeapp-with-dapr
+  labels:
+    app: nodeapp
+    pattern: explicit-sidecar
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nodeapp
+  template:
+    metadata:
+      labels:
+        app: nodeapp
+      annotations:
+        # Dapr 어노테이션을 통해 자동으로 sidecar 주입
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "nodeapp"
+        dapr.io/app-port: "3000"
+        dapr.io/config: "daprConfig"
+        dapr.io/log-level: "info"
+        dapr.io/enable-metrics: "true"
+        dapr.io/metrics-port: "9090"
+    spec:
+      # 실제 환경에서는 Dapr가 자동으로 sidecar를 주입하지만,
+      # 여기서는 명시적으로 정의하여 개념을 설명합니다
+      initContainers:
+      # Dapr Sidecar
+      - name: daprd
+        image: daprio/daprd:1.14.4
+        restartPolicy: Always  # Native sidecar
+        ports:
+        - containerPort: 3500
+          name: http
+        - containerPort: 50001
+          name: grpc
+        - containerPort: 9090
+          name: metrics
+        command:
+        - /daprd
+        args:
+        - --app-id
+        - nodeapp
+        - --app-port
+        - "3000"
+        - --dapr-http-port
+        - "3500"
+        - --dapr-grpc-port
+        - "50001"
+        - --metrics-port
+        - "9090"
+        - --log-level
+        - info
+        - --enable-metrics
+        - --config
+        - /dapr/config.yaml
+        volumeMounts:
+        - name: dapr-config
+          mountPath: /dapr
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /v1.0/healthz
+            port: 3500
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /v1.0/healthz
+            port: 3500
+          initialDelaySeconds: 3
+          periodSeconds: 5
+
+      containers:
+      # 메인 애플리케이션
+      - name: app
+        image: node:20-alpine
+        workingDir: /app
+        ports:
+        - containerPort: 3000
+        command:
+        - sh
+        - -c
+        - |
+          cat > server.js << 'EOF'
+          const express = require('express');
+          const axios = require('axios');
+          const app = express();
+
+          app.use(express.json());
+
+          const DAPR_HOST = process.env.DAPR_HOST || 'localhost';
+          const DAPR_HTTP_PORT = process.env.DAPR_HTTP_PORT || '3500';
+          const daprUrl = `http://${DAPR_HOST}:${DAPR_HTTP_PORT}`;
+
+          // Dapr를 통한 상태 저장
+          app.post('/save', async (req, res) => {
+            try {
+              const { key, value } = req.body;
+              await axios.post(
+                `${daprUrl}/v1.0/state/statestore`,
+                [{ key, value }]
+              );
+              res.json({ message: 'Saved via Dapr', key, value });
+            } catch (error) {
+              res.status(500).json({ error: error.message });
+            }
+          });
+
+          // Dapr를 통한 상태 조회
+          app.get('/get/:key', async (req, res) => {
+            try {
+              const { key } = req.params;
+              const response = await axios.get(
+                `${daprUrl}/v1.0/state/statestore/${key}`
+              );
+              res.json({ key, value: response.data });
+            } catch (error) {
+              res.status(500).json({ error: error.message });
+            }
+          });
+
+          // Dapr를 통한 서비스 호출
+          app.post('/invoke/:service/:method', async (req, res) => {
+            try {
+              const { service, method } = req.params;
+              const response = await axios.post(
+                `${daprUrl}/v1.0/invoke/${service}/method/${method}`,
+                req.body
+              );
+              res.json(response.data);
+            } catch (error) {
+              res.status(500).json({ error: error.message });
+            }
+          });
+
+          // Dapr를 통한 Pub/Sub 발행
+          app.post('/publish/:topic', async (req, res) => {
+            try {
+              const { topic } = req.params;
+              await axios.post(
+                `${daprUrl}/v1.0/publish/pubsub/${topic}`,
+                req.body
+              );
+              res.json({ message: `Published to ${topic}` });
+            } catch (error) {
+              res.status(500).json({ error: error.message });
+            }
+          });
+
+          app.get('/health', (req, res) => {
+            res.json({ status: 'healthy' });
+          });
+
+          const port = 3000;
+          app.listen(port, () => {
+            console.log(`App listening on port ${port}`);
+            console.log(`Dapr sidecar at ${daprUrl}`);
+          });
+          EOF
+
+          npm init -y
+          npm install express axios
+          node server.js
+        env:
+        - name: DAPR_HOST
+          value: "localhost"  # 같은 Pod 내의 Dapr sidecar
+        - name: DAPR_HTTP_PORT
+          value: "3500"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+      volumes:
+      - name: dapr-config
+        configMap:
+          name: dapr-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeapp-service
+spec:
+  selector:
+    app: nodeapp
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 3000
+  - name: dapr-http
+    protocol: TCP
+    port: 3500
+    targetPort: 3500
+  - name: dapr-grpc
+    protocol: TCP
+    port: 50001
+    targetPort: 50001
+  type: ClusterIP

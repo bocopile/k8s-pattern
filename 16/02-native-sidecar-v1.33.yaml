@@ -1,0 +1,122 @@
+# Kubernetes v1.33+ Native Sidecar 패턴
+# restartPolicy: Always를 사용한 Init Container 기반 Sidecar
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-app-native-sidecar
+  labels:
+    app: web-server-native
+    pattern: native-sidecar
+spec:
+  initContainers:
+  # Native Sidecar: restartPolicy Always를 사용
+  - name: log-collector
+    image: busybox:1.36
+    restartPolicy: Always  # v1.29+에서 지원, v1.33에서 stable
+    command:
+    - sh
+    - -c
+    - |
+      echo "Log collector sidecar started"
+      while true; do
+        if [ -f /var/log/app/app.log ]; then
+          tail -f /var/log/app/app.log | while read line; do
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"
+          done
+        fi
+        sleep 1
+      done
+    volumeMounts:
+    - name: log-volume
+      mountPath: /var/log/app
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "50m"
+      limits:
+        memory: "64Mi"
+        cpu: "100m"
+
+  # Startup probe를 사용하는 Sidecar
+  - name: metrics-exporter
+    image: prom/node-exporter:v1.8.2
+    restartPolicy: Always
+    ports:
+    - containerPort: 9100
+      name: metrics
+    startupProbe:
+      httpGet:
+        path: /metrics
+        port: 9100
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 3
+    livenessProbe:
+      httpGet:
+        path: /metrics
+        port: 9100
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /metrics
+        port: 9100
+      periodSeconds: 5
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+  containers:
+  # 메인 애플리케이션
+  - name: app
+    image: nginx:1.27
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: log-volume
+      mountPath: /var/log/app
+    lifecycle:
+      postStart:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            # 로그 디렉토리 설정
+            mkdir -p /var/log/app
+            # Access 로그를 파일로 리다이렉트
+            ln -sf /dev/stdout /var/log/nginx/access.log
+            ln -sf /dev/stderr /var/log/nginx/error.log
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+
+  volumes:
+  - name: log-volume
+    emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-native-service
+spec:
+  selector:
+    app: web-server-native
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 80
+  - name: metrics
+    protocol: TCP
+    port: 9100
+    targetPort: 9100
+  type: ClusterIP

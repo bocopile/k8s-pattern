@@ -1,0 +1,158 @@
+# Kubernetes v1.34+ Per-Container Restart Policy
+# 컨테이너별로 세밀한 재시작 정책 제어
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-app-per-container-restart
+  labels:
+    app: web-server-restart
+    pattern: per-container-restart
+spec:
+  # v1.34+ feature gate: ContainerRestartRules
+  restartPolicy: Never  # Pod 레벨 기본 정책
+
+  initContainers:
+  # 데이터베이스 마이그레이션: 한 번만 실행
+  - name: db-migration
+    image: migrate/migrate:v4.18.1
+    restartPolicy: Never  # v1.34+: 실패해도 재시작하지 않음
+    command:
+    - sh
+    - -c
+    - |
+      echo "Running database migration..."
+      # 마이그레이션 로직
+      sleep 5
+      echo "Migration completed"
+    env:
+    - name: DATABASE_URL
+      value: "postgresql://user:pass@db:5432/mydb"
+
+  # 설정 동기화 Sidecar: 항상 재시작
+  - name: config-sync
+    image: busybox:1.36
+    restartPolicy: Always  # v1.34+: 항상 실행 유지
+    restartPolicyRules:
+    - exitCode: 0
+      action: RestartAlways
+    - exitCode: 1
+      action: RestartOnFailure
+    - exitCodeRange:
+        min: 2
+        max: 255
+      action: RestartNever
+    command:
+    - sh
+    - -c
+    - |
+      echo "Config sync sidecar started"
+      while true; do
+        echo "Syncing configuration..."
+        # ConfigMap이나 외부 소스에서 설정 가져오기
+        sleep 30
+      done
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/config
+
+  containers:
+  # 메인 애플리케이션: 조건부 재시작
+  - name: app
+    image: nginx:1.27
+    restartPolicy: OnFailure  # v1.34+: 실패시에만 재시작
+    restartPolicyRules:
+    - exitCode: 0
+      action: RestartNever  # 정상 종료는 재시작 안 함
+    - exitCode: 1
+      action: RestartAlways  # 일반 오류는 재시작
+    - exitCode: 137  # SIGKILL
+      action: RestartOnFailure
+    - exitCode: 143  # SIGTERM
+      action: RestartNever
+    - exitCodeRange:
+        min: 128
+        max: 255
+      action: RestartOnFailure
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/nginx/conf.d
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+  # 로깅 Sidecar: 항상 재시작
+  - name: log-forwarder
+    image: fluent/fluent-bit:3.2
+    restartPolicy: Always  # v1.34+: 항상 실행 유지
+    restartPolicyRules:
+    - exitCode: 0
+      action: RestartAlways
+    - exitCodeRange:
+        min: 1
+        max: 255
+      action: RestartAlways  # 어떤 경우든 재시작
+    volumeMounts:
+    - name: log-volume
+      mountPath: /var/log/app
+    env:
+    - name: FLUENT_ELASTICSEARCH_HOST
+      value: "elasticsearch"
+    - name: FLUENT_ELASTICSEARCH_PORT
+      value: "9200"
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-config
+      optional: true
+  - name: log-volume
+    emptyDir: {}
+
+---
+# 테스트용 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }

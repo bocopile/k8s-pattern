@@ -1,0 +1,152 @@
+# 로깅 Sidecar 패턴
+# 애플리케이션 로그를 수집하고 중앙 집중식 로깅 시스템으로 전송
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-logging-sidecar
+  labels:
+    app: logging-demo
+    pattern: logging-sidecar
+spec:
+  initContainers:
+  # Fluent Bit 로깅 Sidecar
+  - name: fluent-bit
+    image: fluent/fluent-bit:3.2
+    restartPolicy: Always  # Native sidecar (v1.29+)
+    volumeMounts:
+    - name: app-logs
+      mountPath: /var/log/app
+    - name: fluent-bit-config
+      mountPath: /fluent-bit/etc/
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+  containers:
+  # 메인 애플리케이션
+  - name: app
+    image: python:3.12-slim
+    command:
+    - sh
+    - -c
+    - |
+      cat > app.py << 'EOF'
+      import logging
+      import time
+      import random
+      from datetime import datetime
+
+      # 로깅 설정
+      logging.basicConfig(
+          level=logging.INFO,
+          format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+          handlers=[
+              logging.FileHandler('/var/log/app/application.log'),
+              logging.StreamHandler()
+          ]
+      )
+
+      logger = logging.getLogger('MyApp')
+
+      # 시뮬레이션: 다양한 로그 레벨 생성
+      log_messages = [
+          ('INFO', 'Application started successfully'),
+          ('INFO', 'Processing request'),
+          ('WARNING', 'High memory usage detected'),
+          ('ERROR', 'Failed to connect to database'),
+          ('INFO', 'Request completed'),
+          ('DEBUG', 'Cache hit'),
+          ('ERROR', 'Timeout occurred'),
+      ]
+
+      while True:
+          level, message = random.choice(log_messages)
+          log_func = getattr(logger, level.lower())
+          log_func(f"{message} - ID: {random.randint(1000, 9999)}")
+          time.sleep(random.uniform(1, 5))
+      EOF
+
+      python app.py
+    volumeMounts:
+    - name: app-logs
+      mountPath: /var/log/app
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+
+  volumes:
+  - name: app-logs
+    emptyDir: {}
+  - name: fluent-bit-config
+    configMap:
+      name: fluent-bit-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/app/*.log
+        Parser            python
+        Tag               app.logs
+        Refresh_Interval  5
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+
+    [FILTER]
+        Name                kubernetes
+        Match               app.*
+        Kube_Tag_Prefix     app.
+        Merge_Log           On
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+
+    [FILTER]
+        Name    modify
+        Match   app.*
+        Add     cluster kubernetes-cluster
+        Add     environment production
+
+    [OUTPUT]
+        Name   stdout
+        Match  app.*
+        Format json_lines
+
+    # Elasticsearch로 전송 (선택사항)
+    # [OUTPUT]
+    #     Name            es
+    #     Match           app.*
+    #     Host            elasticsearch
+    #     Port            9200
+    #     Index           app-logs
+    #     Type            _doc
+    #     Logstash_Format On
+    #     Logstash_Prefix app
+    #     Retry_Limit     5
+
+  parsers.conf: |
+    [PARSER]
+        Name        python
+        Format      regex
+        Regex       ^(?<time>[^ ]+ [^ ]+) - (?<logger>[^ ]+) - (?<level>[^ ]+) - (?<message>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S,%L
